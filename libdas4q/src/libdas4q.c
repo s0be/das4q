@@ -37,15 +37,19 @@ typedef struct __attribute__((__packed__)) das4q_set_cmd {
     uint8_t csum;
 } das4q_set_cmd_t;
 
-typedef struct __attribute__((__packed__)) das4q_unk_cmd {
+typedef struct __attribute__((__packed__)) das4q_active_cmd {
     uint8_t magic;       // Will be set to 0xea
-    uint8_t pkt_size;    // Will be 0x0b for unk.
+    uint8_t pkt_size;    // Will be 0x0b for active.
     uint8_t always_78h;  // Will be set to 0x78
-    uint8_t cmd_type;    // will be 0x04 for unk
+    uint8_t cmd_type;    // will be 0x04 for active
     das4q_map_t keycode;
-    uint8_t unk[7];  // all 0
+    das4q_active_keymode_t mode;
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+    uint8_t unk[3];
     uint8_t csum;
-} das4q_unk_cmd_t;
+} das4q_active_cmd_t;
 
 typedef struct das4q_priv {
     libusb_device_handle* handle;
@@ -199,8 +203,10 @@ bool das4q_apply_changes(das4q_handle handle) {
 }
 
 bool das4q_set_key_backlight(das4q_handle handle, das4q_map_t key,
-                             das4q_setting_t setting) {
+                             das4q_setting_t setting,
+                             das4q_active_setting_t active_setting) {
     das4q_priv_t* priv = handle;
+
     das4q_set_cmd_t cmd1 = {.magic = 0xea,
                             .pkt_size = 0x08,
                             .always_78h = 0x78,
@@ -212,12 +218,41 @@ bool das4q_set_key_backlight(das4q_handle handle, das4q_map_t key,
                             .blue = setting.blue,
                             .csum = 0};
 
-    das4q_unk_cmd_t cmd2 = {.magic = 0xea,
-                            .pkt_size = 0x0b,
-                            .always_78h = 0x78,
-                            .cmd_type = 0x04,
-                            .keycode = key,
-                            .csum = 0};
+    das4q_active_cmd_t cmd2 = {.magic = 0xea,
+                               .pkt_size = 0x0b,
+                               .always_78h = 0x78,
+                               .cmd_type = 0x04,
+                               .keycode = key,
+                               .mode = active_setting.mode,
+                               .red = active_setting.red,
+                               .green = active_setting.green,
+                               .blue = active_setting.blue,
+                               .unk = {0, 0, 0},
+                               .csum = 0};
+    switch (cmd2.mode) {
+        case DAS4Q_ACTIVE_MODE_BREATHE:
+            cmd2.unk[0] = 0x03;
+            cmd2.unk[1] = 0xe8;
+            cmd2.unk[2] = 0x03;
+            break;
+        case DAS4Q_ACTIVE_MODE_CYCLE:
+            cmd2.unk[0] = 0x13;
+            cmd2.unk[1] = 0x88;
+            cmd2.unk[2] = 0x00;
+            break;
+        case DAS4Q_ACTIVE_MODE_SOLID:
+            cmd2.unk[0] = 0x07;
+            cmd2.unk[1] = 0xd0;
+            cmd2.unk[2] = 0x00;
+            break;
+        case DAS4Q_ACTIVE_MODE_BLINK:
+            cmd2.unk[0] = 0x01;
+            cmd2.unk[1] = 0xf4;
+            cmd2.unk[2] = 0x03;
+            break;
+        default:
+            break;
+    }
 
     cmd1.csum = das4q_checksum_cmd((uint8_t*)(&cmd1));
     cmd2.csum = das4q_checksum_cmd((uint8_t*)(&cmd2));

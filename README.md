@@ -9,10 +9,9 @@ Depends on libusb-1.0
 Current features:
   - Checks firwmare version
   - Can set RGB on a per key basis
-  - Can enable blinking
+  - Can enable all passive and active effects
 
 Currently missing:
-  - Any active key feature
   - Q Button integration
   - Firmware update
   - Basically anything else
@@ -23,5 +22,5 @@ A simple C Program using libdas4q.  It's intended to be used in a udev rule to s
 Depends on libdas4q, cJSON
 
 Current features:
-  - Can set all the lights to 1 value on the command line
+  - Can set all the lights to 1 passive value on the command line
   - Can do advanced things in json

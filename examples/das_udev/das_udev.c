@@ -47,6 +47,35 @@ das4q_setting_t *parse_setting(cJSON *node) {
     return ret;
 }
 
+// I hate duplicating this just to change the type of mode, but here
+// we are.
+das4q_active_setting_t *parse_active_setting(cJSON *node) {
+    cJSON *mode = cJSON_GetObjectItem(node, "mode");
+    cJSON *red = cJSON_GetObjectItem(node, "red");
+    cJSON *green = cJSON_GetObjectItem(node, "green");
+    cJSON *blue = cJSON_GetObjectItem(node, "blue");
+
+    if (mode == NULL || red == NULL || green == NULL || blue == NULL) {
+        printf("Failed parsing node, missing values:\n %s", cJSON_Print(node));
+        return NULL;
+    }
+
+    if (!cJSON_IsNumber(mode) || !cJSON_IsNumber(red) ||
+        !cJSON_IsNumber(green) || !cJSON_IsNumber(blue)) {
+        printf("Numeric values expected:\n %s", cJSON_Print(node));
+        return NULL;
+    }
+
+    das4q_active_setting_t *ret = calloc(1, sizeof(das4q_active_setting_t));
+    // We could validate this, but nah.
+    ret->mode = mode->valueint & 0xFF;
+    ret->red = red->valueint & 0xFF;
+    ret->green = green->valueint & 0xFF;
+    ret->blue = blue->valueint & 0xFF;
+
+    return ret;
+}
+
 void apply_config_file(char *config_file, das4q_handle handle) {
     FILE *fp = fopen(config_file, "r");
     if (fp == NULL) {
@@ -75,7 +104,22 @@ void apply_config_file(char *config_file, das4q_handle handle) {
             def_set->green = 0;
             def_set->blue = 0;
         }
+
+        das4q_active_setting_t *adef_set = NULL;
+        cJSON *adef = cJSON_GetObjectItem(cfg, "active_default");
+        if (adef != NULL) {
+            adef_set = parse_active_setting(adef);
+        }
+        if (adef_set == NULL) {
+            adef_set = calloc(1, sizeof(das4q_active_setting_t));
+            adef_set->mode = 0;
+            adef_set->red = 0;
+            adef_set->green = 0;
+            adef_set->blue = 0;
+        }
+
         das4q_setting_t *set_array[0x84] = {0};
+        das4q_active_setting_t *aset_array[0x84] = {0};
 
         cJSON *conf_array = cJSON_GetObjectItem(cfg, "keys");
         if (conf_array != NULL) {
@@ -90,16 +134,34 @@ void apply_config_file(char *config_file, das4q_handle handle) {
                 }
                 set_array[k->valueint] = parse_setting(cnode);
             }
+
+            cJSON_ArrayForEach(c, conf_array) {
+                cJSON *cnode = cJSON_GetObjectItem(c, "active_setting");
+                cJSON *k = cJSON_GetObjectItem(c, "key");
+                if (cnode == NULL || k == NULL || !cJSON_IsNumber(k)) {
+                    printf("Something wrong: \n%s\n",
+                           cJSON_PrintUnformatted(c));
+                    continue;
+                }
+                aset_array[k->valueint] = parse_active_setting(cnode);
+            }
         }
 
         for (int i = 0; i < 0x84; i++) {
             das4q_setting_t *s = NULL;
+            das4q_active_setting_t *as = NULL;
             if (set_array[i] != NULL) {
                 s = set_array[i];
             } else {
                 s = def_set;
             }
-            das4q_set_key_backlight(handle, i, *s);
+
+            if (aset_array[i] != NULL) {
+                as = aset_array[i];
+            } else {
+                as = adef_set;
+            }
+            das4q_set_key_backlight(handle, i, *s, *as);
         }
 
         free(def_set);
@@ -189,8 +251,9 @@ int main(int argc, char *argv[]) {
                                .red = arguments.red,
                                .green = arguments.green,
                                .blue = arguments.blue};
+        das4q_active_setting_t aset = {0};
         for (int i = 0; i < 0x84; i++) {
-            das4q_set_key_backlight(handle, i, set);
+            das4q_set_key_backlight(handle, i, set, aset);
         }
     }
 
